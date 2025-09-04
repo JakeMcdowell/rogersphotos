@@ -3,50 +3,34 @@ import os
 import urllib.parse
 import uuid
 from pathlib import Path
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory, abort
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for
 from werkzeug.utils import secure_filename
 from watermark import apply_watermark  # your watermark function
-from firebase_admin import credentials, initialize_app, storage
-
+from firebase_admin import credentials, initialize_app, storage, firestore
 
 app = Flask(__name__)
-#app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///photos.db'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    "DATABASE_URL",
-    "sqlite:////var/data/photos.db"  # 4 slashes for absolute path
-)
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# --- App config (static and uploads) ---
 app.config['UPLOAD_FOLDER'] = 'static/images/originals'
 app.config['WATERMARKED_FOLDER'] = 'static/images/watermarked'
 app.config['ALLOWED_EXTENSIONS'] = {'png', 'jpg', 'jpeg', 'gif'}
 
+# --- Firebase init ---
+app.config['FIREBASE_STORAGE_BUCKET'] = os.environ.get(
+    "FIREBASE_STORAGE_BUCKET",
+    "profileuploads-3de42.firebasestorage.app"
+)
 
-app.config['FIREBASE_STORAGE_BUCKET'] = "profileuploads-3de42.firebasestorage.app"
-
-cred = credentials.Certificate(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "serviceAccountKey.json"))
+cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "serviceAccountKey.json")
+cred = credentials.Certificate(cred_path)
 initialize_app(cred, {"storageBucket": app.config['FIREBASE_STORAGE_BUCKET']})
 
-db = SQLAlchemy(app)
+# Firestore client (use `fs`, not `db`, to avoid confusion with prior SQLAlchemy var)
+fs = firestore.client()
 
-class Photo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), unique=True, nullable=False)
-    category = db.Column(db.String(50), nullable=False)
-    is_featured = db.Column(db.Boolean, default=False)
-    price = db.Column(db.Float, default=0.0)
-
-    # New field: where the file lives in Firebase
-    storage_url = db.Column(db.Text, nullable=False)  # Firebase public URL
-
-class Price(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    item_type = db.Column(db.String(50))  # e.g., "service" or "print"
-    label = db.Column(db.String(100))     # e.g., "Corporate Head Shot"
-    amount = db.Column(db.Float)          # e.g., 25.00
-
-
-# --- Firebase init ---
+# --------- Helpers ---------
+def allowed_file(filename: str) -> bool:
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
 def upload_to_firebase(local_path: str, dest_path: str) -> str:
     """
@@ -73,35 +57,51 @@ def upload_to_firebase(local_path: str, dest_path: str) -> str:
     url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{quoted_name}?alt=media&token={token}"
     return url
 
+def doc_to_dict(doc):
+    """Convert a Firestore DocumentSnapshot to a dict with 'id'."""
+    d = doc.to_dict() or {}
+    d["id"] = doc.id
+    return d
 
-
-def allowed_file(filename):
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
+# --------- Routes ---------
 
 @app.route('/')
 def home():
-    featured_photos = Photo.query.filter_by(is_featured=True).all()
-    return render_template('index.html', photos=featured_photos)
-
-
+    # featured photos only
+    snaps = fs.collection('photos').where('is_featured', '==', True).stream()
+    photos = [doc_to_dict(d) for d in snaps]
+    return render_template('index.html', photos=photos)
 
 @app.route('/gallery')
 def gallery():
     category_filter = request.args.get('category', 'all')
+    col = fs.collection('photos')
+
     if category_filter == 'all':
-        photos = Photo.query.all()
+        snaps = col.stream()
     else:
-        photos = Photo.query.filter_by(category=category_filter).all()
-    categories = ['all', 'animals', 'people', 'landscape']  # add more as needed
-    return render_template('gallery.html', photos=photos, selected_category=category_filter, categories=categories)
+        snaps = col.where('category', '==', category_filter).stream()
+
+    photos = [doc_to_dict(d) for d in snaps]
+
+    # Build categories dynamically from data
+    cat_snaps = col.select(['category']).stream()
+    categories = ['all'] + sorted({(d.to_dict() or {}).get('category') for d in cat_snaps if (d.to_dict() or {}).get('category')})
+
+    return render_template('gallery.html',
+                           photos=photos,
+                           selected_category=category_filter,
+                           categories=categories)
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
-    categories = ['animals', 'people', 'landscape']  # keep in sync with gallery categories
+    # keep in sync with your expected categories
+    categories = ['animals', 'people', 'landscape']
+
     if request.method == 'POST':
         if 'photo' not in request.files:
             return "No file part", 400
+
         file = request.files['photo']
         category = request.form.get('category')
 
@@ -109,44 +109,57 @@ def upload():
             return "Invalid or missing category", 400
         if file.filename == '':
             return "No selected file", 400
-        if file and allowed_file(file.filename):
-            # Make a unique, safe filename (preserve extension)
-            ext = Path(file.filename).suffix.lower()
-            filename = f"{uuid.uuid4().hex}{ext}"  # unique
-            safe_filename = secure_filename(filename)
+        if not allowed_file(file.filename):
+            return "Invalid file type", 400
 
-            original_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-            watermarked_path = os.path.join(app.config['WATERMARKED_FOLDER'], safe_filename)
+        # Ensure temp folders exist (ephemeral OK)
+        os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+        os.makedirs(app.config['WATERMARKED_FOLDER'], exist_ok=True)
 
-            # Save original locally
-            file.save(original_path)
+        # Unique safe filename
+        ext = Path(file.filename).suffix.lower()
+        filename = f"{uuid.uuid4().hex}{ext}"
+        safe_filename = secure_filename(filename)
 
-            # Apply watermark to watermarked_path
-            apply_watermark(original_path, watermarked_path)
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
+        watermarked_path = os.path.join(app.config['WATERMARKED_FOLDER'], safe_filename)
 
-            # Destination path in Firebase (organize by category/date if you like)
-            dest_path = f"{category}/{safe_filename}"
+        # Save original locally
+        file.save(original_path)
 
-            # Upload the watermarked image to Firebase Storage
-            try:
-                public_url = upload_to_firebase(watermarked_path, dest_path)
-            except Exception as e:
-                # Clean up and report
-                return (f"Upload to Firebase failed: {e}", 500)
+        # Apply watermark
+        apply_watermark(original_path, watermarked_path)
 
-            # Save info in DB (store cloud URL)
-            photo = Photo(filename=safe_filename, category=category, storage_url=public_url)
-            db.session.add(photo)
-            db.session.commit()
-
-            # Optional: clean up local files
+        # Upload watermarked to Firebase Storage
+        dest_path = f"{category}/{safe_filename}"
+        try:
+            public_url = upload_to_firebase(watermarked_path, dest_path)
+        except Exception as e:
+            # Clean up and report
             try:
                 os.remove(original_path)
                 os.remove(watermarked_path)
             except OSError:
                 pass
+            return (f"Upload to Firebase failed: {e}", 500)
 
-            return redirect(url_for('gallery'))
+        # Save metadata in Firestore
+        fs.collection('photos').add({
+            'filename': safe_filename,
+            'category': category,
+            'is_featured': False,
+            'price': 0.0,
+            'storage_url': public_url,
+        })
+
+        # Clean up local temp files
+        for p in (original_path, watermarked_path):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+        return redirect(url_for('gallery'))
 
     return render_template('upload.html', categories=categories)
 
@@ -156,45 +169,42 @@ def about():
 
 @app.route('/pricing')
 def pricing():
-    services = Price.query.filter_by(item_type='Service').all()
-    prints = Price.query.filter_by(item_type='Print').all()
+    services = [doc_to_dict(d) for d in fs.collection('prices').where('item_type', '==', 'Service').stream()]
+    prints   = [doc_to_dict(d) for d in fs.collection('prices').where('item_type', '==', 'Print').stream()]
     return render_template('pricing.html', services=services, prints=prints)
 
 @app.route("/admin/seed-prices")
 def seed_prices():
     prices = [
-        Price(item_type="Service", label="Corporate Head Shot", amount=25.00),
-        Price(item_type="Service", label="20min Mini Session Indoor or Out", amount=60.00),
-        Price(item_type="Service", label="1hr Session 2-Locations", amount=150.00),
-        Price(item_type="Service", label="2hr Multiple Locations", amount=250.00),
-        Price(item_type="Print", label="Digital Copy E-mail", amount=10.00),
-        Price(item_type="Print", label="5x7 Print", amount=15.00),
-        Price(item_type="Print", label="8x10 Print", amount=25.00),
-        Price(item_type="Print", label="11x14 Print", amount=30.00),
-        Price(item_type="Print", label="13x19 Print", amount=35.00),
+        {"item_type": "Service", "label": "Corporate Head Shot",                 "amount": 25.00},
+        {"item_type": "Service", "label": "20min Mini Session Indoor or Out",    "amount": 60.00},
+        {"item_type": "Service", "label": "1hr Session 2-Locations",             "amount": 150.00},
+        {"item_type": "Service", "label": "2hr Multiple Locations",              "amount": 250.00},
+        {"item_type": "Print",   "label": "Digital Copy E-mail",                 "amount": 10.00},
+        {"item_type": "Print",   "label": "5x7 Print",                           "amount": 15.00},
+        {"item_type": "Print",   "label": "8x10 Print",                          "amount": 25.00},
+        {"item_type": "Print",   "label": "11x14 Print",                         "amount": 30.00},
+        {"item_type": "Print",   "label": "13x19 Print",                         "amount": 35.00},
     ]
-
-    db.session.bulk_save_objects(prices)
-    db.session.commit()
-
+    batch = fs.batch()
+    col = fs.collection('prices')
+    for p in prices:
+        ref = col.document()  # auto id
+        batch.set(ref, p)
+    batch.commit()
     return "Seeded prices successfully!"
-
-
 
 @app.route('/admin/prices', methods=['POST'])
 def update_price():
-    price_id = request.form.get('price_id')
+    price_id = request.form.get('price_id')   # your form must send the Firestore doc id
     label = request.form.get('label')
     amount = float(request.form.get('amount', 0))
 
-    price = Price.query.get(price_id)
-    if price:
-        price.label = label
-        price.amount = amount
-        db.session.commit()
+    if price_id:
+        ref = fs.collection('prices').document(price_id)
+        ref.update({"label": label, "amount": amount})
+
     return redirect('/admin')
-
-
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
@@ -204,23 +214,20 @@ def admin():
         price = float(request.form.get('price', 0))
         category = request.form.get('category')
 
-        photo = Photo.query.get(photo_id)
-        if photo:
-            photo.is_featured = is_featured
-            photo.price = price
+        if photo_id:
+            ref = fs.collection('photos').document(photo_id)
+            updates = {'is_featured': is_featured, 'price': price}
             if category:
-                photo.category = category
-            db.session.commit()
+                updates['category'] = category
+            ref.update(updates)
 
-    photos = Photo.query.all()
-    prices = Price.query.all()  # ← add this line
-    return render_template('admin.html', photos=photos, prices=prices)  # ← include prices
+    photos = [doc_to_dict(d) for d in fs.collection('photos').stream()]
+    prices = [doc_to_dict(d) for d in fs.collection('prices').stream()]
+    return render_template('admin.html', photos=photos, prices=prices)
 
-
+# --- Local dev runner (Render will use gunicorn start command) ---
 if __name__ == "__main__":
+    # Ensure temp dirs exist (OK on local/dev)
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     os.makedirs(app.config['WATERMARKED_FOLDER'], exist_ok=True)
-    with app.app_context():
-        db.create_all()
-        # seed_prices() only need to do once
     app.run(debug=True)
