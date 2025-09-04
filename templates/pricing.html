@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}Pricing - RGS_Photography{% endblock %}
+
+{% block content %}
+<main class="max-w-4xl mx-auto">
+  <h1 class="text-5xl font-extrabold mb-12 text-center">Pricing</h1>
+
+  <!-- Services Section -->
+  <section class="mb-16">
+    <h2 class="text-3xl font-bold mb-6 border-b border-yellow-400 pb-2">Services</h2>
+    <div class="space-y-4 text-lg">
+      {% for item in services %}
+      <div class="flex justify-between border-b border-gray-700 py-3">
+        <span>{{ item.label }}</span>
+        <span>${{ "%.2f"|format(item.amount) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="mt-6 italic text-yellow-300">
+      Message me for special event & drone prices and I can tailor a session to meet your needs.
+    </p>
+  </section>
+
+  <!-- Prints Section -->
+  <section>
+    <h2 class="text-3xl font-bold mb-6 border-b border-yellow-400 pb-2">Prints</h2>
+    <div class="space-y-4 text-lg">
+      {% for item in prints %}
+      <div class="flex justify-between border-b border-gray-700 py-3">
+        <span>{{ item.label }}</span>
+        <span>${{ "%.2f"|format(item.amount) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="mt-6 italic text-yellow-300">
+      Message for prices on canvas, metal, or acrylic and for larger or special sizes.
+    </p>
+  </section>
+</main>
+{% endblock %}

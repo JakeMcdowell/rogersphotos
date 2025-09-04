@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Hub - RGS_Photography{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-4">Admin Hub</h1>
+
+<table class="w-full table-auto bg-gray-800 rounded-lg text-gray-100">
+  <thead>
+    <tr>
+      <th class="px-4 py-2">Photo</th>
+      <th class="px-4 py-2">Category</th>
+      <th class="px-4 py-2">Featured</th>
+      <th class="px-4 py-2">Price ($)</th>
+      <th class="px-4 py-2">Update</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for photo in photos %}
+    <tr class="border-t border-gray-700">
+  <td class="px-4 py-2">
+    <img
+  src="{{ photo.storage_url or url_for('static', filename='images/watermarked/' ~ photo.filename) }}"
+  alt="Photo {{ loop.index }}"
+  class="w-24 h-24 object-cover rounded-xl"
+  loading="lazy"
+/>
+
+
+  </td>
+
+  <form method="POST" class="px-4 py-2 flex items-center space-x-2">
+    <input type="hidden" name="photo_id" value="{{ photo.id }}" />
+
+    <td class="px-4 py-2">
+      <select name="category" class="text-gray-900 p-1 rounded w-full">
+        <option value="animals" {% if photo.category == 'animals' %}selected{% endif %}>Animals</option>
+        <option value="people" {% if photo.category == 'people' %}selected{% endif %}>People</option>
+        <option value="landscape" {% if photo.category == 'landscape' %}selected{% endif %}>Landscape</option>
+        <option value="urban" {% if photo.category == 'urban' %}selected{% endif %}>Urban</option>
+        <option value="nature" {% if photo.category == 'nature' %}selected{% endif %}>Nature</option>
+      </select>
+    </td>
+
+    <td class="text-center">
+      <input type="checkbox" name="is_featured" value="1" {% if photo.is_featured %}checked{% endif %} />
+    </td>
+
+    <td>
+      <input type="number" step="0.01" name="price" value="{{ photo.price }}" class="w-20 text-gray-900 p-1 rounded" />
+    </td>
+
+    <td>
+      <button type="submit" class="bg-green-500 px-3 py-1 rounded hover:bg-green-600 text-white">Save</button>
+    </td>
+  </form>
+</tr>
+
+    {% endfor %}
+  </tbody>
+</table>
+
+<br>
+<br>
+
+
+<form action="/upload" method="POST" enctype="multipart/form-data" class="w-full max-w-lg bg-gray-800 p-6 rounded-lg shadow-lg">
+    <div class="mb-6">
+      <label for="photo" class="block mb-2 font-semibold">Select Photo</label>
+      <input type="file" name="photo" id="photo" accept="image/*" required
+             class="w-full text-gray-900 p-2 rounded" />
+    </div>
+
+    <div class="mb-6">
+      <label for="category" class="block mb-2 font-semibold">Category</label>
+      <select name="category" id="category" required
+              class="w-full p-2 rounded text-gray-900">
+        <option value="" disabled selected>Select a category</option>
+        <option value="animals">Animals</option>
+        <option value="people">People</option>
+        <option value="landscape">Landscape</option>
+        <option value="urban">Urban</option>
+        <option value="nature">Nature</option>
+      </select>
+    </div>
+
+    <button type="submit" class="bg-yellow-400 text-gray-900 font-bold px-6 py-3 rounded hover:bg-yellow-500 transition">
+      Upload Photo
+    </button>
+  </form>
+
+
+<h2 class="text-2xl font-bold mt-12 mb-4">Edit Pricing</h2>
+
+<table class="w-full table-auto bg-gray-800 rounded-lg text-gray-100">
+  <thead>
+    <tr>
+      <th class="px-4 py-2">Type</th>
+      <th class="px-4 py-2">Label</th>
+      <th class="px-4 py-2">Amount ($)</th>
+      <th class="px-4 py-2">Update</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for price in prices %}
+    <tr class="border-t border-gray-700">
+      <form method="POST" action="/admin/prices" class="contents">  <!-- Use 'contents' to avoid breaking <table> layout -->
+        <input type="hidden" name="price_id" value="{{ price.id }}">
+        <td class="px-4 py-2">{{ price.item_type }}</td>
+        <td class="px-4 py-2">
+          <input type="text" name="label" value="{{ price.label }}" class="w-full text-gray-900 p-1 rounded">
+        </td>
+        <td class="px-4 py-2">
+          <input type="number" step="0.01" name="amount" value="{{ price.amount }}" class="w-24 text-gray-900 p-1 rounded">
+        </td>
+        <td class="px-4 py-2">
+          <button type="submit" class="bg-blue-500 px-3 py-1 rounded hover:bg-blue-600 text-white">Save</button>
+        </td>
+      </form>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+
+
+
+{% endblock %}

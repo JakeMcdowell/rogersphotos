@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Gallery - RGS_Photography{% endblock %}
+
+{% block content %}
+
+  <main class="max-w-4xl mx-auto">
+    <h1 class="text-4xl font-bold mb-6 text-center">About Roger's Photography</h1>
+
+    <img src="{{ url_for('static', filename='images/aboutheadshot.jpg') }}"
+         alt="RogerSpurgeon"
+         class="mx-auto my-10"
+         style="border-radius: 35%; width: 500px;" />
+
+    <p class="mb-4 text-lg leading-relaxed">
+      Hi, I’m Roger Spurgeon. Let me share a bit about myself and my journey in photography.
+      I was born and raised right here in Ottumwa. In 1980, I joined the United States Marine
+      Corps and served for four years before coming back home. After that, I spent five years at
+      Musco Lighting, working on lighting for movies and college football games. In 1992, I
+      moved to California to work with BeBee Night Lights, again focusing on lighting for major
+      films and TV shows. I retired in 2023 and returned to Ottumwa.
+    </p>
+    <p class="mb-4 text-lg leading-relaxed">
+      My passion for photography started back in Okinawa, Japan, when I bought my first film camera
+      while serving in the Marines. Since then, I’ve always had a quality camera by my side. In 1995,
+      I worked part-time at the Perris Valley Skydiving School in California as a freefall cameraman
+      and videographer. I captured photos and videos of students on their first jumps and worked with
+      experienced skydivers jumping from planes, balloons, and even walking on the wing of a glider.
+      Over four years, I logged more than 1,500 camera jumps — some of the best memories of my life.
+    </p>
+    <p> Since then, I’ve kept growing my photography skills and lighting expertise. Today, I’m
+      the official photographer for the Bridge View Center, covering their special events and
+      concerts. I use natural light and multiple flashes to make sure every shot has the perfect
+      mood and lighting.
+    </p>
+    <p> I enjoy capturing those special moments for people — whether it’s
+    maternity, newborns, kids, seniors, family portraits, sports events, pets, corporate headshots,
+    or even drone photos of your farm or business.
+    </p>
+    <p>
+      If you’re looking for professional photography with great service at a reasonable price,
+      feel free to call or message me. We can customize a session that fits exactly what you need.
+    </p>
+    <p class="mb-4 text-lg leading-relaxed">
+      Thank you for visiting our site. If you have any questions or want to commission a custom photoshoot, feel free to <a href="/contact" class="text-yellow-400 underline">contact us</a>.
+    </p>
+  </main>
+{% endblock %}

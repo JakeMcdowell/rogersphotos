@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}Gallery - RGS_Photography{% endblock %}
+
+{% block content %}
+  <h1 class="text-4xl font-bold mb-8 text-center">Photo Gallery</h1>
+
+  <div class="max-w-7xl mx-auto">
+
+    <!-- Category Filter Buttons -->
+    <div class="flex justify-center space-x-4 mb-8">
+      <button onclick="filterPhotos('all')" class="category-btn bg-yellow-400 text-gray-900 px-4 py-2 rounded font-semibold">All</button>
+      <button onclick="filterPhotos('animals')" class="category-btn px-4 py-2 rounded border border-yellow-400 hover:bg-yellow-400 hover:text-gray-900 transition">Animals</button>
+      <button onclick="filterPhotos('people')" class="category-btn px-4 py-2 rounded border border-yellow-400 hover:bg-yellow-400 hover:text-gray-900 transition">People</button>
+      <button onclick="filterPhotos('landscape')" class="category-btn px-4 py-2 rounded border border-yellow-400 hover:bg-yellow-400 hover:text-gray-900 transition">Landscape</button>
+      <button onclick="filterPhotos('urban')" class="category-btn px-4 py-2 rounded border border-yellow-400 hover:bg-yellow-400 hover:text-gray-900 transition">Urban</button>
+      <button onclick="filterPhotos('nature')" class="category-btn px-4 py-2 rounded border border-yellow-400 hover:bg-yellow-400 hover:text-gray-900 transition">Nature</button>
+    </div>
+
+<!-- Photos Grid -->
+<div id="photosGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+  {% for photo in photos %}
+    <div
+      class="photo-item rounded-xl overflow-hidden shadow-lg transition
+             duration-300 ease-out opacity-100 scale-100
+             {% if photo.category %}{{ photo.category }}{% endif %}">
+      <div class="w-full overflow-hidden">
+        <img
+          src="{{ photo.storage_url or url_for('static', filename='images/watermarked/' ~ photo.filename) }}"
+          alt="{{ photo.category }} - {{ photo.filename }}"
+          class="w-full aspect-[4/3] object-cover transition duration-300 ease-out"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        />
+      </div>
+      <div class="p-4 bg-gray-800">
+        <p class="text-sm font-semibold capitalize">{{ photo.category }}</p>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<script>
+  // Add/Remove active styles on buttons
+  const btns = document.querySelectorAll('.category-btn');
+  function setActiveButton(cat) {
+    btns.forEach(b => {
+      const isActive = b.getAttribute('onclick')?.includes(`'${cat}'`);
+      b.classList.toggle('bg-yellow-400', isActive);
+      b.classList.toggle('text-gray-900', isActive);
+      b.classList.toggle('border-yellow-400', !isActive);
+      b.classList.toggle('hover:bg-yellow-400', !isActive);
+      b.classList.toggle('hover:text-gray-900', !isActive);
+      b.classList.toggle('bg-gray-800', !isActive);
+      b.classList.toggle('text-gray-200', !isActive);
+    });
+  }
+
+  // Smooth filter: fade/scale out then hide; show then fade/scale in
+  function filterPhotos(category) {
+    setActiveButton(category);
+
+    const cards = document.querySelectorAll('.photo-item');
+    cards.forEach(card => {
+      const shouldShow = category === 'all' || card.classList.contains(category);
+
+      if (shouldShow) {
+        // Unhide first so transitions can run
+        card.style.display = '';
+        // next frame: animate in
+        requestAnimationFrame(() => {
+          card.classList.remove('opacity-0', 'scale-95');
+          card.classList.add('opacity-100', 'scale-100');
+        });
+      } else {
+        // animate out
+        card.classList.remove('opacity-100', 'scale-100');
+        card.classList.add('opacity-0', 'scale-95');
+        // after transition, remove from layout
+        setTimeout(() => {
+          // Only hide if it’s still meant to be hidden
+          if (!(category === 'all' || card.classList.contains(category))) {
+            card.style.display = 'none';
+          }
+        }, 300); // match duration-300
+      }
+    });
+  }
+
+  // Optional: fade cards in on initial load for a nicer entrance
+  document.addEventListener('DOMContentLoaded', () => {
+    const cards = document.querySelectorAll('.photo-item');
+    cards.forEach(c => {
+      c.classList.add('opacity-0', 'scale-95');
+      c.style.display = '';
+      requestAnimationFrame(() => {
+        c.classList.remove('opacity-0', 'scale-95');
+        c.classList.add('opacity-100', 'scale-100');
+      });
+    });
+  });
+</script>
+
+{% endblock %}
+

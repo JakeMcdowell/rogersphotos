@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Featured Photography - RGS_Photography{% endblock %}
+
+{% block content %}
+<script>
+    let index = 0;
+    function showNextPhoto() {
+        const slides = document.querySelectorAll('.slide');
+        slides.forEach((slide) => slide.classList.add('hidden'));
+        index = (index + 1) % slides.length;
+        slides[index].classList.remove('hidden');
+    }
+    window.onload = function () {
+        setInterval(showNextPhoto, 3000);
+    };
+</script>
+
+<main class="flex-grow flex flex-col items-center justify-center px-6 py-12 w-full max-w-7xl mx-auto">
+    <h1 class="text-5xl font-extrabold mb-10 text-center tracking-tight drop-shadow-lg">
+        Picture Of The Day
+    </h1>
+
+    <!-- Auto-sizing slideshow: no fixed heights -->
+  <div class="w-full max-w-5xl overflow-hidden rounded-xl shadow-2xl border border-gray-700">
+    <div id="slideshow" class="w-full">  <!-- let height be auto -->
+      {% for photo in photos %}
+        <!-- Not absolute; hidden others; visible one defines container height -->
+        <div class="slide {% if not loop.first %}hidden{% endif %}">
+          <div class="w-full flex items-center justify-center bg-black"> <!-- optional bg frame -->
+            <img
+              src="{{ photo.storage_url or url_for('static', filename='images/watermarked/' ~ photo.filename) }}"
+              alt="{{ photo.category }} - {{ photo.filename }}"
+              class="w-full h-auto object-contain rounded-xl"
+              loading="lazy"
+              referrerpolicy="no-referrer"
+            />
+          </div>
+          <!-- Optional caption/action bar -->
+          <!--
+          <div class="px-5 py-3">
+            <span class="text-sm text-gray-300">{{ photo.category|capitalize }}</span>
+          </div>
+          -->
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+</main>
+{% endblock %}

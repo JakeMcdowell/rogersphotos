@@ -1,0 +1,6 @@
+@font-face {
+  font-family: "SnellRoundhand";
+  src: url("/static/fonts/SnellRoundhand-Bold.ttf") format("truetype");
+  font-weight: bold;
+  font-style: normal;
+}
